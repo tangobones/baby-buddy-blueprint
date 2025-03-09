@@ -1,0 +1,280 @@
+blueprint:
+  name: Baby Buddy
+  author: noblewolf
+  description: "Notifications and control of Baby Buddy. Works with Baby Buddy https://github.com/jcgoette/baby_buddy_homeassistant \n\nThis blueprint requires Helpers (You can use whatever name you want or use the below.)
+  \n- Input Button https://www.home-assistant.io/integrations/button/
+  \n- - BB Diaper Helper
+  \n- - BB Feeding Helper
+  \n- - BB Pumping Helper
+  \n- - BB Sleep Helper
+  \n- - BB Tummy Time Helper
+  \n- Counter https://www.home-assistant.io/integrations/counter/
+  \n- - BB Diaper Counter
+  \n- - BB Feeding Counter
+  \n- - BB Pumping Counter
+  \n- Input Text https://www.home-assistant.io/integrations/input_text/
+  \n- - BB Notes
+  \n- Input Number https://www.home-assistant.io/integrations/input_number/
+  \n- - BB Amount
+  "
+  domain: automation
+  input:
+    bb_child:
+      name: Baby Buddy Child
+      description: Choose one child per automation.
+      selector:
+        entity:
+          domain: sensor
+          device_class: babybuddy_child
+    bb_child_last_timer:
+      name: Baby Buddy Child Last Timer
+      description: Timer created by Baby Buddy integration. Choose the same timer as the child name.
+      selector:
+        entity:
+          domain: sensor
+          device_class: timestamp
+    notification_group:
+      name: Notification or Notification Group
+      description: Device or notify group to notify of timer starting. Blueprint sends a notification each time a timer start. For example notify.josh_s_phone or notify.all_phones
+    diaper_button:
+      name: Diaper Button
+      description: Helper (button type) to trigger diaper log. Use this button in your UI to log a diaper change.
+      selector:
+        entity:
+          domain: input_button
+    feeding_button:
+      name: Feeding Button
+      description: Helper (button type) to trigger feeding log. Use this button in your UI to log a feeding long.
+      selector:
+        entity:
+          domain: input_button
+    pumping_button:
+      name: Pumping Button
+      description: Helper (button type) to trigger pumping log. Use this button in your UI to log a pumping session.
+      selector:
+        entity:
+          domain: input_button
+    tummy_time_button:
+      name: Tummy Timer Button
+      description: Helper (button type) to trigger tummy time log. Use this button in your UI to log tummy time.
+      selector:
+        entity:
+          domain: input_button
+    sleep_button:
+      name: Helper to trigger sleep log.
+      description: Helper (button type) to trigger sleep log. Use this button in your UI to log a sleep session.
+      selector:
+        entity:
+          domain: input_button
+    bb_timer:
+      name: Baby Buddy Timer
+      description: The timer created by Baby Buddy. Usually named switch.firstName_lastName_timer For example switch.lindsay_smith_timer
+      selector:
+        entity:
+          domain: switch
+    diaper_counter:
+      name: Diaper Change Counter
+      description: Helper you created to count diaper changes. Resets at midnight.
+      selector:
+        entity:
+          domain: counter
+    feeding_counter:
+      name: Feeding Counter
+      description: Helper you created to count feeing sessions. Resets at midnight.
+      selector:
+        entity:
+          domain: counter
+    pumping_counter:
+      name: Pumping Counter
+      description: Helper you created to count pumping sessions. Resets at midnight.
+      selector:
+        entity:
+          domain: counter
+    bb_notes:
+      name: Notes
+      description: Shared notes field for diaper change or feeding notes.
+      selector:
+        entity:
+          domain: input_text
+    bb_amount:
+      name: Amount
+      description: Shared amount field for diaper changes and feedings.
+      selector:
+        entity:
+          domain: input_number
+    bb_ui_url:
+      name: Link to Baby Buddy tab in your dashboard.
+      description: Link to a dashboard page that has your Baby Buddy controls. For example /lovelace/baby-buddy Used as the tap action in the timer notificaiton to allow quick access.
+trigger:
+  - platform: state
+    entity_id: !input diaper_button
+    id: diaper-change
+  - platform: state
+    entity_id: !input feeding_button
+    id: feeding-log
+  - platform: state
+    entity_id: !input pumping_button
+    id: pumping-log
+  - platform: state
+    entity_id: !input tummy_time_button
+    id: tummy-time-end
+  - platform: state
+    entity_id: !input sleep_button
+    id: sleep-end-log
+  - platform: time
+    at: "00:00:00"
+    id: midnight
+  - platform: state
+    entity_id: !input bb_timer
+    to: "on"
+    id: timer-on
+  - platform: state
+    entity_id: !input bb_timer
+    to: "off"
+    id: timer-off
+variables:
+  _bb_amount: !input bb_amount
+  _bb_notes: !input bb_notes
+  _bb_child_last_timer: !input bb_child_last_timer
+condition: []
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: diaper-change
+        sequence:
+          - service: babybuddy.add_diaper_change
+            data:
+              type: "{{ states('select.baby_buddy_diaper_type') }}"
+              color: "{{ states('select.baby_buddy_diaper_color') }}"
+              notes: "{{ states(_bb_notes) }}"
+            target:
+              entity_id: !input bb_child
+          - service: input_text.set_value
+            data:
+              value: ""
+            target:
+              entity_id: !input bb_notes
+          - service: counter.increment
+            data: {}
+            target:
+              entity_id: !input diaper_counter
+      - conditions:
+          - condition: trigger
+            id: feeding-log
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ state_attr(_bb_child_last_timer, 'active') }}"
+                sequence:
+                  - service: babybuddy.add_feeding
+                    data:
+                      timer: true
+                      type: "{{ states('select.baby_buddy_feeding_type') }}"
+                      method: "{{ states('select.baby_buddy_feeding_method') }}"
+                      amount: "{{ states(_bb_amount) }}"
+                      notes: "{{ states(_bb_notes) }}"
+                    target:
+                      entity_id: !input bb_timer
+            default:
+              - service: babybuddy.add_feeding
+                data:
+                  type: "{{ states('select.baby_buddy_feeding_type') }}"
+                  method: "{{ states('select.baby_buddy_feeding_method') }}"
+                  amount: "{{ states(_bb_amount) }}"
+                  notes: "{{ states(_bb_notes) }}"
+                target:
+                  entity_id: !input bb_timer
+          - service: input_text.set_value
+            data:
+              value: ""
+            target:
+              entity_id: !input bb_notes
+          - service: input_number.set_value
+            data:
+              value: 0
+            target:
+              entity_id: !input bb_amount
+          - service: counter.increment
+            data: {}
+            target:
+              entity_id: !input feeding_counter
+      - conditions:
+          - condition: trigger
+            id: pumping-log
+        sequence:
+          - service: babybuddy.add_pumping
+            data:
+              amount: '{{ states(_bb_amount) }}'
+              notes: '{{ states(_bb_notes) }}'
+            target:
+              entity_id: !input bb_child
+          - service: counter.increment
+            data: {}
+            target:
+              entity_id: !input pumping_counter
+          - service: input_text.set_value
+            data:
+              value: ""
+            target:
+              entity_id: !input bb_notes
+          - service: input_number.set_value
+            data:
+              value: 0
+            target:
+              entity_id: !input bb_amount
+      - conditions:
+          - condition: trigger
+            id: tummy-time-end
+        sequence:
+          - service: babybuddy.add_tummy_time
+            data:
+              timer: true
+            target:
+              entity_id: !input bb_timer
+      - conditions:
+          - condition: trigger
+            id: sleep-end-log
+        sequence:
+          - service: babybuddy.add_sleep
+            data:
+              timer: true
+            target:
+              entity_id: !input bb_timer
+      - conditions:
+          - condition: trigger
+            id: midnight
+        sequence:
+          - service: counter.reset
+            data: {}
+            target:
+              entity_id:
+                - !input diaper_counter
+                - !input feeding_counter
+                - !input pumping_counter
+      - conditions:
+          - condition: trigger
+            id: timer-on
+        sequence:
+          - service: !input notification_group
+            data:
+              title: ⏳️ Baby Buddy Timer Running
+              message: Tap to open Baby Buddy to log timer.
+              data:
+                group: baby-buddy-timer
+                clickAction: !input bb_ui_url
+                url: !input bb_ui_url
+                persistent: true
+                tag: baby-buddy-timer
+      - conditions:
+          - condition: trigger
+            id: timer-off
+        sequence:
+          - service: !input notification_group
+            data:
+              message: clear_notification
+              data:
+                tag: baby-buddy-timer
+mode: parallel
+max: 10
